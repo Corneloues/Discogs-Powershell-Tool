@@ -139,7 +139,7 @@ In the **Variables** tab, create these 7 variables:
 **Finding a Label ID:**
 1. Go to Discogs.com and search for a label
 2. Click on the label name
-3. Look at the URL: `https://discogs.com/label/563691-Now-Thats-What-I-Call-Music`
+3. Look at the URL: `https://www.discogs.com/label/563691-Now-Thats-What-I-Call-Music`
 4. The number after `/label/` is your label ID (563691 in this example)
 
 ### 5. Customize for Your Use Case
