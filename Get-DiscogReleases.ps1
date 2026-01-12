@@ -142,7 +142,40 @@ if ($enableDiagnostics) {
         Write-Host "  ⚠ No titles match the regex pattern"
     }
     
+    # Show raw API response structure
     Write-Host ""
+    Write-Host "================================================"
+    Write-Host "RAW API RESPONSE INSPECTION"
+    Write-Host "================================================"
+    Write-Host ""
+    
+    # Show the first release object as JSON
+    if ($allReleases.Count -gt 0) {
+        Write-Host "First release object (raw JSON):"
+        $firstRelease = $allReleases | Select-Object -First 1
+        Write-Host ($firstRelease | ConvertTo-Json -Depth 3)
+        Write-Host ""
+        
+        # Show all available property names
+        Write-Host "Available properties on release objects:"
+        $firstRelease.PSObject.Properties | ForEach-Object {
+            Write-Host "  - $($_.Name) (Type: $($_.TypeNameOfValue)) = $($_.Value)"
+        }
+        Write-Host ""
+        
+        # Show a few more sample releases with all properties
+        Write-Host "Sample of first 3 releases with all properties:"
+        $allReleases | Select-Object -First 3 | ForEach-Object {
+            Write-Host "  Release:"
+            $_.PSObject.Properties | ForEach-Object {
+                Write-Host "    $($_.Name): $($_.Value)"
+            }
+            Write-Host ""
+        }
+    } else {
+        Write-Host "  No releases available to inspect!"
+    }
+    
     Write-Host "================================================"
     Write-Host ""
 }
