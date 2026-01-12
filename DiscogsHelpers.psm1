@@ -4,8 +4,8 @@
 # This module contains helper functions for interacting with the Discogs API
 # and processing release data.
 #
-# These functions are designed to be imported by Get-DiscogReleases.ps1 and
-# require $BaseUrl and $Headers variables to be defined in the calling scope.
+# These functions are designed to be imported by Get-DiscogReleases.ps1.
+# API-related functions accept BaseUrl and Headers as explicit parameters.
 # ============================================================================
 
 <#
