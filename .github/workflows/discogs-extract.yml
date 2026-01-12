@@ -36,7 +36,7 @@ jobs:
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           BASE_URL: ${{ vars.BASE_URL }}
           LABEL_ID: ${{ inputs.label_id || vars.NOW_UK_SERIES }}
-          USER_AGENT: 'SoundchaserUKDiscogsScript/1.0'
+          USER_AGENT: ${{ vars.USER_AGENT }}
         run: |
           # Execute the PowerShell script
           ./Get-DiscogReleases.ps1
