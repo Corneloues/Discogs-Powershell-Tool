@@ -69,7 +69,7 @@ function Get-DiscogsLabelReleases {
             Start-Sleep -Milliseconds 500
             
         } catch {
-            Write-Host "  ⚠ ERROR on page $page : $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "  ⚠ ERROR on page $page: $($_.Exception.Message)" -ForegroundColor Red
             if ($_.Exception.Response) {
                 $statusCode = $_.Exception.Response.StatusCode.value__
                 Write-Host "  HTTP Status Code: $statusCode" -ForegroundColor Red
