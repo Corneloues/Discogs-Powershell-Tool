@@ -1,0 +1,75 @@
+---
+name: Extract Discogs Releases
+
+# Workflow triggers:
+# - Manual execution via Actions tab (workflow_dispatch)
+# - Scheduled execution every Sunday at midnight UTC
+"on":
+  workflow_dispatch:
+    inputs:
+      label_id:
+        description: 'Override label ID (optional)'
+        required: false
+        type: string
+  schedule:
+    # Run weekly on Sundays at midnight UTC
+    - cron: '0 0 * * 0'
+
+# Grant write permissions to commit changes back to the repository
+permissions:
+  contents: write
+
+jobs:
+  extract-releases:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Run PowerShell script to extract Discogs data
+      - name: Extract Discogs releases
+        shell: pwsh
+        env:
+          # Set environment variables from GitHub Secrets and Variables
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          BASE_URL: ${{ vars.BASE_URL }}
+          LABEL_ID: ${{ inputs.label_id || vars.NOW_UK_SERIES }}
+          USER_AGENT: 'SoundchaserUKDiscogsScript/1.0'
+        run: |
+          # Execute the PowerShell script
+          ./Get-DiscogReleases.ps1
+
+      # Step 3: Commit and push CSV files back to repository
+      - name: Commit and push CSV files
+        run: |
+          # Configure git with bot identity
+          git config --local user.email \
+            "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          # Add all CSV files
+          git add *.csv
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            # Get current timestamp in UTC
+            TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+            # Commit with timestamp
+            git commit -m "Update Discogs releases CSV - $TIMESTAMP"
+
+            # Push to main branch
+            git push
+          fi
+
+      # Step 4: Upload CSV files as artifacts
+      - name: Upload CSV artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: discogs-releases-csv
+          path: '*.csv'
+          retention-days: 30
