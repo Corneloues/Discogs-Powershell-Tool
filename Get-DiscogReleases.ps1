@@ -215,6 +215,7 @@ Write-Host ""
 # Step 3: Process each release to extract track information
 # Each release is fetched directly from /releases/{id} - no masters/versions needed.
 $rows = @()
+$processedCount = 0  # Track how many releases we actually process
 
 foreach ($release in $numberedReleases) {
     # Extract issue number from title (e.g., "Now That's What I Call Music 50" → 50)
@@ -250,6 +251,25 @@ foreach ($release in $numberedReleases) {
         if ($firstFormat.descriptions) { $descriptions = $firstFormat.descriptions }
         
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
+        
+        # ============================================================================
+        # FILTER: Only process CD and Vinyl formats with Original versions
+        # ============================================================================
+        
+        # Filter by format: Only CD and Vinyl
+        if ($formatName -ne "CD" -and $formatName -ne "Vinyl") {
+            Write-Host "  Skipping: Format '$formatName' not in allowed list (CD, Vinyl)" -ForegroundColor Yellow
+            continue
+        }
+        
+        # Filter by version: Only Original releases (skip remasters, reissues, etc.)
+        if ($versionLabel -notlike "*-Original") {
+            Write-Host "  Skipping: Version '$versionLabel' is not an Original release" -ForegroundColor Yellow
+            continue
+        }
+        
+        Write-Host "  ✓ Accepted: $formatName-$versionLabel" -ForegroundColor Green
+        $processedCount++  # Increment counter for accepted releases
         
         # Process each track in the release
         foreach ($t in $releaseData.tracklist) {
@@ -309,10 +329,16 @@ $uniqueReleasesProcessed = ($rows | Select-Object -Property DiscogsReleaseID -Un
 Write-Host "================================================"
 Write-Host "Processing Summary:"
 Write-Host "================================================"
-Write-Host "  Total releases fetched: $($allReleases.Count)"
-Write-Host "  Releases matching filter: $($numberedReleases.Count)"
+Write-Host "  Total releases fetched from API: $($allReleases.Count)"
+Write-Host "  Releases matching title pattern: $($numberedReleases.Count)"
+Write-Host "  Releases processed (after format/version filtering): $processedCount"
 Write-Host "  Total tracks extracted: $($rows.Count)"
 Write-Host "  Releases processed: $uniqueReleasesProcessed"
+Write-Host "================================================"
+Write-Host ""
+Write-Host "Filtering criteria:"
+Write-Host "  Allowed formats: CD, Vinyl"
+Write-Host "  Allowed versions: *-Original only"
 Write-Host "================================================"
 Write-Host ""
 
