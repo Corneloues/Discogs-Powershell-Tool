@@ -207,11 +207,8 @@ $rows = @()
 
 foreach ($release in $filteredReleases) {
     # Extract issue number from title (e.g., "Now 50" → 50)
-    $issueNumber = if ($release.title -match '\d+') { 
-        [int]([regex]::Match($release.title, '\d+').Value) 
-    } else { 
-        0 
-    }
+    $match = [regex]::Match($release.title, '\d+')
+    $issueNumber = if ($match.Success) { [int]$match.Value } else { 0 }
     
     Write-Host "Processing: $($release.title) (Issue #$issueNumber, ID: $($release.id))..." -ForegroundColor Cyan
     
