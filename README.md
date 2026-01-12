@@ -34,7 +34,7 @@ The workflow:
 ### For Repository Owner
 
 #### 1. Get Your Discogs API Token
-1. Log in to <a href="https://www.discogs.com">Discogs.com</a>
+1. Log in to [Discogs.com](https://www.discogs.com)
 2. Go to Settings → Developers
 3. Click "Generate new token"
 4. Copy the token (you'll need it in the next step)
@@ -94,7 +94,7 @@ The workflow is configured to run automatically:
 #### To Change the Schedule:
 1. Edit `.github/workflows/discogs-extract.yml`
 2. Modify the cron expression in the `schedule:` section
-3. Use <a href="https://crontab.guru">crontab.guru</a> to help generate cron expressions
+3. Use [crontab.guru](https://crontab.guru) to help generate cron expressions
 4. Examples:
    - Daily at 2 AM UTC: `0 2 * * *`
    - Every Monday at 9 AM UTC: `0 9 * * 1`
@@ -111,7 +111,7 @@ Want to use this tool for your own Discogs data extraction? Here's how:
 2. This creates a copy in your own GitHub account
 
 ### 2. Get Your Own Discogs API Token
-1. Create a Discogs account at <a href="https://www.discogs.com">Discogs.com</a> if you don't have one
+1. Create a Discogs account at [Discogs.com](https://www.discogs.com) if you don't have one
 2. Go to Settings → Developers
 3. Generate a new token
 4. Copy it for the next step
