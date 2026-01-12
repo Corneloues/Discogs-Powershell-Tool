@@ -32,7 +32,7 @@ if (-not $labelIdStr) { throw "LABEL_ID environment variable is required" }
 try {
     $labelId = [int]$labelIdStr
 } catch {
-    throw "LABEL_ID must be a valid integer, got: $labelIdStr"
+    throw "LABEL_ID must be a valid integer"
 }
 
 # Configure headers for Discogs API requests
