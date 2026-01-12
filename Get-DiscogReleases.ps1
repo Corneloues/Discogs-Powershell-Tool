@@ -74,6 +74,7 @@ $tokenDisplay = if ($DiscogsToken.Length -gt 8) {
     "****"
 }
 Write-Host "Token: $tokenDisplay"
+Write-Host "Diagnostics: $enableDiagnostics"
 Write-Host ""
 
 # Import helper functions
