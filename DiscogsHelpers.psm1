@@ -15,10 +15,15 @@
 .DESCRIPTION
     Queries the Discogs API to fetch all releases associated with a given label ID.
     Automatically handles pagination to retrieve all results across multiple pages.
-    Uses the $BaseUrl and $Headers script-level variables for API access.
 
 .PARAMETER LabelId
     The Discogs label ID to query. This is a numeric identifier from Discogs.
+
+.PARAMETER BaseUrl
+    The base URL for the Discogs API (e.g., "https://api.discogs.com")
+
+.PARAMETER Headers
+    Hashtable containing the HTTP headers for API requests (User-Agent and Authorization)
 
 .PARAMETER PerPage
     Number of results per page. Default is 100 (maximum allowed by Discogs API).
@@ -28,22 +33,25 @@
     Returns an array of release objects containing metadata for each release.
 
 .EXAMPLE
-    $releases = Get-DiscogsLabelReleases -LabelId 563691
+    $releases = Get-DiscogsLabelReleases -LabelId 563691 -BaseUrl $BaseUrl -Headers $Headers
     Retrieves all releases from label ID 563691
 
 .NOTES
-    Requires $BaseUrl and $Headers variables to be set at script level.
     May take some time for labels with many releases due to API rate limiting.
 #>
 function Get-DiscogsLabelReleases {
     param(
+        [Parameter(Mandatory)]
         [int]$LabelId,
+        
+        [Parameter(Mandatory)]
+        [string]$BaseUrl,
+        
+        [Parameter(Mandatory)]
+        [hashtable]$Headers,
+        
         [int]$PerPage = 100
     )
-    
-    # Access variables from parent scope
-    $BaseUrl = Get-Variable -Name BaseUrl -Scope 1 -ValueOnly
-    $Headers = Get-Variable -Name Headers -Scope 1 -ValueOnly
     
     $page = 1
     $results = @()

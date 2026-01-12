@@ -61,7 +61,7 @@ Import-Module "$PSScriptRoot/DiscogsHelpers.psm1" -Force
 # ============================================================================
 
 # Step 1: Retrieve all releases from the specified label
-$allReleases = Get-DiscogsLabelReleases -LabelId $labelId
+$allReleases = Get-DiscogsLabelReleases -LabelId $labelId -BaseUrl $BaseUrl -Headers $Headers
 
 # Step 2: Filter releases based on configured criteria and sort by number
 # Only processes releases that match:
