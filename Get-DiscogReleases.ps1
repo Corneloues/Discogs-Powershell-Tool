@@ -53,6 +53,17 @@ $Headers = @{
     "Authorization" = "Discogs token=$DiscogsToken"
 }
 
+Write-Host "================================================"
+Write-Host "Starting Discogs Release Extraction"
+Write-Host "================================================"
+Write-Host "Configuration:"
+Write-Host "  Base URL: $BaseUrl"
+Write-Host "  Label ID: $labelId"
+Write-Host "  Filter - Type: $whereType, Role: $whereRole"
+Write-Host "  Filter - Match Pattern: $whereMatch"
+Write-Host "  Output File: $fileName.csv"
+Write-Host ""
+
 # Import helper functions
 . "$PSScriptRoot/DiscogsHelpers.ps1"
 
@@ -62,6 +73,9 @@ $Headers = @{
 
 # Step 1: Retrieve all releases from the specified label
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
+
+Write-Host "✓ Retrieved $($allReleases.Count) total releases from label"
+Write-Host ""
 
 # Step 2: Filter releases based on configured criteria and sort by number
 # Only processes releases that match:
@@ -76,6 +90,18 @@ $numberedMasters = $allReleases |
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
+Write-Host "✓ Filtered to $($numberedMasters.Count) releases matching criteria:"
+foreach ($m in $numberedMasters) {
+    Write-Host "  - $($m.title) (ID: $($m.id))"
+}
+Write-Host ""
+
+if ($numberedMasters.Count -eq 0) {
+    Write-Host "⚠ WARNING: No releases matched the filter criteria!" -ForegroundColor Yellow
+    Write-Host "  Check that WHERE_TYPE, WHERE_ROLE, and WHERE_MATCH are correct." -ForegroundColor Yellow
+    Write-Host "  Creating empty CSV file..." -ForegroundColor Yellow
+}
+
 # Step 3: Process each master release to extract track information
 # For each master: fetch all versions, then all tracks from each version
 $rows = @()
@@ -84,14 +110,31 @@ foreach ($master in $numberedMasters) {
     # Extract issue number from title (e.g., "Now 50" → 50)
     $issueNumber = [int]([regex]::Match($master.title, '\d+').Value)
 
+    Write-Host "Processing: $($master.title) (Issue #$issueNumber)..."
+
     # Step 3a: Get all versions (different pressings/formats) of this master
-    $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
-    $versions    = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
+    try {
+        $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
+        $versions    = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
+        Write-Host "  Found $($versions.versions.Count) versions"
+    } catch {
+        Write-Host "  ⚠ ERROR fetching versions: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  HTTP Status: $($_.Exception.Response.StatusCode.value__)" -ForegroundColor Red
+        continue
+    }
 
     foreach ($v in $versions.versions) {
         # Step 3b: Get detailed release information including tracklist
-        $releaseUrl  = "$BaseUrl/releases/$($v.id)"
-        $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+        try {
+            $releaseUrl  = "$BaseUrl/releases/$($v.id)"
+            $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+        } catch {
+            Write-Host "    ⚠ ERROR fetching release $($v.id): $($_.Exception.Message)" -ForegroundColor Red
+            if ($_.Exception.Response) {
+                Write-Host "    HTTP Status: $($_.Exception.Response.StatusCode.value__)" -ForegroundColor Red
+            }
+            continue
+        }
 
         $year = $releaseData.year
 
@@ -102,6 +145,9 @@ foreach ($master in $numberedMasters) {
         if ($firstFormat.descriptions) { $descriptions = $firstFormat.descriptions }
 
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
+
+        Write-Host "    Processing release ID $($v.id) - $($releaseData.year) - $formatName"
+        Write-Host "      Tracks: $($releaseData.tracklist.Count)"
 
         # Step 3d: Process each track in the release
         foreach ($t in $releaseData.tracklist) {
@@ -131,11 +177,29 @@ foreach ($master in $numberedMasters) {
                 DiscogsReleaseID = $releaseData.id
             }
         }
+
+        # Respect API rate limits (1 request per second)
+        Start-Sleep -Milliseconds 1000
     }
 }
 
 # Step 4: Export all collected track data to CSV file
 # Sorted by: Issue → Format → Version → Disc → Track Number
+if ($rows.Count -eq 0) {
+    Write-Host "⚠ WARNING: No tracks were extracted. CSV will be empty." -ForegroundColor Yellow
+}
+
 $rows | Sort-Object Issue, Format, Version, Disc, TrackNumber |
     Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\$fileName.csv"
+
+Write-Host ""
+Write-Host "================================================"
+Write-Host "Extraction Complete!"
+Write-Host "================================================"
+Write-Host "Summary:"
+Write-Host "  Total releases fetched: $($allReleases.Count)"
+Write-Host "  Releases matching filters: $($numberedMasters.Count)"
+Write-Host "  Total tracks exported: $($rows.Count)"
+Write-Host "  Output file: $fileName.csv"
+Write-Host "================================================"
 

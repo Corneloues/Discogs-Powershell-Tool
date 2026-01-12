@@ -42,16 +42,53 @@ function Get-DiscogsLabelReleases {
         [int]$LabelId,
         [int]$PerPage = 100
     )
+    
+    Write-Host "Fetching all releases for label ID $LabelId..."
+    
     $page = 1
     $results = @()
 
     do {
         $url = "$BaseUrl/labels/$LabelId/releases?per_page=$PerPage&page=$page"
-        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
-        $results += $response.releases
-        $page++
-    } while ($response.pagination.page -lt $response.pagination.pages)
+        
+        try {
+            Write-Host "  Fetching page $page..."
+            $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
+            $results += $response.releases
+            
+            Write-Host "    Page $page: $($response.releases.Count) releases (Total so far: $($results.Count))"
+            
+            $page++
+            
+            # Check if we have more pages
+            if ($response.pagination.page -ge $response.pagination.pages) {
+                break
+            }
+            
+            # Add small delay to respect rate limits
+            Start-Sleep -Milliseconds 500
+            
+        } catch {
+            Write-Host "  ⚠ ERROR on page $page : $($_.Exception.Message)" -ForegroundColor Red
+            if ($_.Exception.Response) {
+                $statusCode = $_.Exception.Response.StatusCode.value__
+                Write-Host "  HTTP Status Code: $statusCode" -ForegroundColor Red
+                
+                if ($statusCode -eq 401) {
+                    Write-Host "  Authentication failed. Check DISCOGS_TOKEN secret." -ForegroundColor Red
+                } elseif ($statusCode -eq 403) {
+                    Write-Host "  Access forbidden. Check token permissions." -ForegroundColor Red
+                } elseif ($statusCode -eq 429) {
+                    Write-Host "  Rate limit exceeded. Waiting 60 seconds..." -ForegroundColor Yellow
+                    Start-Sleep -Seconds 60
+                    continue  # Retry this page
+                }
+            }
+            throw  # Re-throw to stop execution on critical errors
+        }
+    } while ($true)
 
+    Write-Host "  Total releases retrieved: $($results.Count)"
     return $results
 }
 
