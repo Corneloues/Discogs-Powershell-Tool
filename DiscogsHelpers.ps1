@@ -53,6 +53,62 @@ function Get-DiscogsLabelReleases {
         try {
             $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
             
+            # Diagnostic: Show raw API response structure (first page only)
+            if ($page -eq 1 -and $script:enableDiagnostics) {
+                Write-Host ""
+                Write-Host "================================================"
+                Write-Host "RAW API RESPONSE INSPECTION"
+                Write-Host "================================================"
+                Write-Host ""
+                Write-Host "API Endpoint: $url"
+                Write-Host ""
+                
+                # Show pagination info
+                if ($response.pagination) {
+                    Write-Host "Pagination object:"
+                    Write-Host "  $($response.pagination | ConvertTo-Json -Depth 2)"
+                    Write-Host ""
+                }
+                
+                # Show first release in detail
+                if ($response.releases -and $response.releases.Count -gt 0) {
+                    $firstRelease = $response.releases[0]
+                    Write-Host "First release object (raw JSON):"
+                    Write-Host "$($firstRelease | ConvertTo-Json -Depth 3)"
+                    Write-Host ""
+                    
+                    # List all property names
+                    Write-Host "Available properties on release objects:"
+                    $firstRelease.PSObject.Properties | ForEach-Object {
+                        $propName = $_.Name
+                        $propValue = $_.Value
+                        $propType = if ($propValue) { $propValue.GetType().Name } else { "null" }
+                        Write-Host "  - $propName ($propType): $propValue"
+                    }
+                    Write-Host ""
+                    
+                    # Show sample of first 5 releases with their type and role values
+                    Write-Host "Sample releases with type/role inspection:"
+                    $response.releases | Select-Object -First 5 | ForEach-Object {
+                        Write-Host "  Title: ""$($_.title)"""
+                        Write-Host "    type property: [$($_.type)] (IsNull: $($null -eq $_.type), IsEmpty: $([string]::IsNullOrEmpty($_.type)))"
+                        Write-Host "    role property: [$($_.role)] (IsNull: $($null -eq $_.role), IsEmpty: $([string]::IsNullOrEmpty($_.role)))"
+                        
+                        # Check for alternative property names
+                        if ($_.PSObject.Properties['release_type']) {
+                            Write-Host "    release_type property found: $($_.release_type)"
+                        }
+                        if ($_.PSObject.Properties['artist']) {
+                            Write-Host "    artist property: $($_.artist)"
+                        }
+                        Write-Host ""
+                    }
+                }
+                
+                Write-Host "================================================"
+                Write-Host ""
+            }
+            
             # Validate response
             if (-not $response.releases) {
                 Write-Host "  WARNING: No releases in response for page $page" -ForegroundColor Yellow

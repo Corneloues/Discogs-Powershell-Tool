@@ -30,7 +30,7 @@ $whereType    = $env:WHERE_TYPE
 $whereRole    = $env:WHERE_ROLE
 $whereMatch   = $env:WHERE_MATCH
 $fileName     = $env:FILE_NAME
-$enableDiagnostics = $env:ENABLE_DIAGNOSTICS -eq 'true'
+$script:enableDiagnostics = $env:ENABLE_DIAGNOSTICS -eq 'true'
 
 # Validate required environment variables
 if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required" }
@@ -74,7 +74,7 @@ $tokenDisplay = if ($DiscogsToken.Length -gt 8) {
     "****"
 }
 Write-Host "Token: $tokenDisplay"
-Write-Host "Diagnostics: $enableDiagnostics"
+Write-Host "Diagnostics: $script:enableDiagnostics"
 Write-Host ""
 
 # Import helper functions
@@ -88,7 +88,7 @@ Write-Host ""
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
 
 # Diagnostic output (if enabled)
-if ($enableDiagnostics) {
+if ($script:enableDiagnostics) {
     Write-Host ""
     Write-Host "================================================"
     Write-Host "DIAGNOSTIC MODE ENABLED"
