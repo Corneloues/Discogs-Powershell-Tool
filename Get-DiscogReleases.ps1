@@ -20,13 +20,20 @@
 $DiscogsToken = $env:DISCOGS_TOKEN
 $BaseUrl      = $env:BASE_URL
 $UserAgent    = $env:USER_AGENT
-$labelId      = [int]$env:LABEL_ID
+$labelIdStr   = $env:LABEL_ID
 
 # Validate required environment variables
 if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required" }
 if (-not $BaseUrl) { throw "BASE_URL environment variable is required" }
 if (-not $UserAgent) { throw "USER_AGENT environment variable is required" }
-if (-not $labelId) { throw "LABEL_ID environment variable is required" }
+if (-not $labelIdStr) { throw "LABEL_ID environment variable is required" }
+
+# Parse and validate label ID
+try {
+    $labelId = [int]$labelIdStr
+} catch {
+    throw "LABEL_ID must be a valid integer, got: $labelIdStr"
+}
 
 # Configure headers for Discogs API requests
 $Headers = @{
