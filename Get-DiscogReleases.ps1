@@ -1,11 +1,38 @@
-$DiscogsToken = "EavlhsqZOaypkDZbZZyEHSfShsoiBTeOWOalCWtF"
-$BaseUrl      = "https://api.discogs.com"
-$Headers      = @{
-    "User-Agent" = "SoundchaserUKDiscogsScript/1.0"
+<#
+.SYNOPSIS
+    Extract release information from Discogs API to CSV file.
+
+.DESCRIPTION
+    This script retrieves release data from the Discogs API for a specific label.
+    It requires environment variables to be set for authentication and configuration.
+
+.ENVIRONMENT VARIABLES
+    DISCOGS_TOKEN - Discogs API authentication token (required)
+    BASE_URL      - Discogs API base URL (required)
+    USER_AGENT    - User agent string for API requests (required)
+    LABEL_ID      - Discogs label ID to query (required)
+
+.NOTES
+    This script is designed to run in GitHub Actions with secrets and variables.
+#>
+
+# Read configuration from environment variables (passed from GitHub Actions)
+$DiscogsToken = $env:DISCOGS_TOKEN
+$BaseUrl      = $env:BASE_URL
+$UserAgent    = $env:USER_AGENT
+$labelId      = [int]$env:LABEL_ID
+
+# Validate required environment variables
+if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required" }
+if (-not $BaseUrl) { throw "BASE_URL environment variable is required" }
+if (-not $UserAgent) { throw "USER_AGENT environment variable is required" }
+if (-not $labelId) { throw "LABEL_ID environment variable is required" }
+
+# Configure headers for Discogs API requests
+$Headers = @{
+    "User-Agent"    = $UserAgent
     "Authorization" = "Discogs token=$DiscogsToken"
 }
-
-$labelId = 563691
 
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
 
