@@ -218,14 +218,28 @@ $rows = @()
 
 foreach ($release in $numberedReleases) {
     # Extract issue number from title (e.g., "Now That's What I Call Music 50" → 50)
-    $issueNumber = [int]([regex]::Match($release.title, '\d+').Value)
+    $issueNumber = if ($release.title -match '\d+') { 
+        [int]([regex]::Match($release.title, '\d+').Value) 
+    } else { 
+        0 
+    }
     
-    Write-Host "Processing: $($release.title) (Issue #$issueNumber)..." -ForegroundColor Cyan
+    Write-Host "Processing: $($release.title) (Issue #$issueNumber, ID: $($release.id))..." -ForegroundColor Cyan
 
     try {
         # Fetch the release directly (no masters/versions needed)
         $releaseUrl = "$BaseUrl/releases/$($release.id)"
         $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+        
+        # Log tracklist details
+        $trackCount = if ($releaseData.tracklist) { $releaseData.tracklist.Count } else { 0 }
+        Write-Host "  Year: $($releaseData.year), Tracks: $trackCount" -ForegroundColor Gray
+        
+        # Skip releases with no tracks but log them
+        if (-not $releaseData.tracklist -or $releaseData.tracklist.Count -eq 0) {
+            Write-Host "  ⚠ Skipping - No tracklist available" -ForegroundColor Yellow
+            continue
+        }
         
         $year = $releaseData.year
         
@@ -236,8 +250,6 @@ foreach ($release in $numberedReleases) {
         if ($firstFormat.descriptions) { $descriptions = $firstFormat.descriptions }
         
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
-        
-        Write-Host "  Format: $formatName-$versionLabel, Year: $year, Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
         
         # Process each track in the release
         foreach ($t in $releaseData.tracklist) {
@@ -258,6 +270,7 @@ foreach ($release in $numberedReleases) {
             $rows += [pscustomobject]@{
                 Issue            = $issueNumber
                 Year             = $year
+                ReleaseTitle     = $releaseData.title
                 Format           = $formatName
                 Version          = $versionLabel
                 Disc             = $disc
@@ -288,7 +301,22 @@ foreach ($release in $numberedReleases) {
 
 # Log results after processing all releases
 Write-Host ""
-Write-Host "✓ Collected $($rows.Count) total tracks from $($numberedReleases.Count) releases" -ForegroundColor Green
+
+# Calculate unique releases processed
+$uniqueReleasesProcessed = ($rows | Select-Object -Property DiscogsReleaseID -Unique).Count
+
+# Summary statistics
+Write-Host "================================================"
+Write-Host "Processing Summary:"
+Write-Host "================================================"
+Write-Host "  Total releases fetched: $($allReleases.Count)"
+Write-Host "  Releases matching filter: $($numberedReleases.Count)"
+Write-Host "  Total tracks extracted: $($rows.Count)"
+Write-Host "  Releases processed: $uniqueReleasesProcessed"
+Write-Host "================================================"
+Write-Host ""
+
+Write-Host "✓ Collected $($rows.Count) total tracks from $uniqueReleasesProcessed releases" -ForegroundColor Green
 
 if ($rows.Count -eq 0) {
     Write-Host "WARNING: No tracks were collected! CSV will be empty." -ForegroundColor Yellow
