@@ -1,29 +1,11 @@
 $DiscogsToken = "EavlhsqZOaypkDZbZZyEHSfShsoiBTeOWOalCWtF"
 $BaseUrl      = "https://api.discogs.com"
 $Headers      = @{
-    "User-Agent" = "RoyNowDiscogsScript/1.0"
+    "User-Agent" = "SoundchaserUKDiscogsScript/1.0"
     "Authorization" = "Discogs token=$DiscogsToken"
 }
 
 $labelId = 563691
-
-function Get-DiscogsLabelReleases {
-    param(
-        [int]$LabelId,
-        [int]$PerPage = 100
-    )
-    $page = 1
-    $results = @()
-
-    do {
-        $url = "$BaseUrl/labels/$LabelId/releases?per_page=$PerPage&page=$page"
-        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
-        $results += $response.releases
-        $page++
-    } while ($response.pagination.page -lt $response.pagination.pages)
-
-    return $results
-}
 
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
 
@@ -35,49 +17,7 @@ $numberedMasters = $allReleases |
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
-function Get-VersionLabel {
-    param(
-        [string]$FormatName,
-        [string[]]$Descriptions
-    )
-
-    $suffix = "Original"
-
-    if ($Descriptions -contains "Remastered") { $suffix = "Remaster" }
-    elseif ($Descriptions -contains "Reissue") { $suffix = "Reissue" }
-    elseif ($Descriptions -contains "Repress") { $suffix = "Repress" }
-    elseif ($Descriptions -contains "Club Edition") { $suffix = "Club" }
-    elseif ($Descriptions -contains "Promo") { $suffix = "Promo" }
-
-    return "$FormatName-$suffix"
-}
-
-function Parse-DiscAndTrack {
-    param(
-        [string]$Position
-    )
-
-    # Vinyl: A1, B2, C10 etc.
-    if ($Position -match '^[A-Z](\d+)$') {
-        $disc  = $Position.Substring(0,1)
-        $track = [int]$matches[1]
-    }
-    # CD: 1-01, 2-07, 3-12, etc.
-    elseif ($Position -match '^(\d+)-0*(\d+)$') {
-        $disc  = $matches[1]
-        $track = [int]$matches[2]
-    }
-    else {
-        # fallback – no clean position, treat as disc 1, and track = 0 or increment later
-        $disc  = "1"
-        $track = 0
-    }
-
-    [pscustomobject]@{
-        Disc        = $disc
-        TrackNumber = $track
-    }
-}
+# Work through the releases returned by the API
 
 $rows = @()
 
@@ -133,5 +73,74 @@ foreach ($master in $numberedMasters) {
     }
 }
 
+# Export CSV File
 $rows | Sort-Object Issue, Format, Version, Disc, TrackNumber |
     Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\Now_UK_1to122_AllVersions_Tracks.csv"
+
+<#
+#>
+function Get-DiscogsLabelReleases {
+    param(
+        [int]$LabelId,
+        [int]$PerPage = 100
+    )
+    $page = 1
+    $results = @()
+
+    do {
+        $url = "$BaseUrl/labels/$LabelId/releases?per_page=$PerPage&page=$page"
+        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
+        $results += $response.releases
+        $page++
+    } while ($response.pagination.page -lt $response.pagination.pages)
+
+    return $results
+}
+
+<#
+#>
+function Get-VersionLabel {
+    param(
+        [string]$FormatName,
+        [string[]]$Descriptions
+    )
+
+    $suffix = "Original"
+
+    if ($Descriptions -contains "Remastered") { $suffix = "Remaster" }
+    elseif ($Descriptions -contains "Reissue") { $suffix = "Reissue" }
+    elseif ($Descriptions -contains "Repress") { $suffix = "Repress" }
+    elseif ($Descriptions -contains "Club Edition") { $suffix = "Club" }
+    elseif ($Descriptions -contains "Promo") { $suffix = "Promo" }
+
+    return "$FormatName-$suffix"
+}
+
+<#
+#>
+function Parse-DiscAndTrack {
+    param(
+        [string]$Position
+    )
+
+    # Vinyl: A1, B2, C10 etc.
+    if ($Position -match '^[A-Z](\d+)$') {
+        $disc  = $Position.Substring(0,1)
+        $track = [int]$matches[1]
+    }
+    # CD: 1-01, 2-07, 3-12, etc.
+    elseif ($Position -match '^(\d+)-0*(\d+)$') {
+        $disc  = $matches[1]
+        $track = [int]$matches[2]
+    }
+    else {
+        # fallback – no clean position, treat as disc 1, and track = 0 or increment later
+        $disc  = "1"
+        $track = 0
+    }
+
+    [pscustomobject]@{
+        Disc        = $disc
+        TrackNumber = $track
+    }
+}
