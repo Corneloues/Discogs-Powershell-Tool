@@ -66,6 +66,12 @@ jobs:
           LABEL_ID: ${{ github.event.inputs.label_id || '563691' }}
           PER_PAGE: ${{ github.event.inputs.per_page || '100' }}
         run: |
+          # Validate that DISCOGS_TOKEN is set
+          if ([string]::IsNullOrEmpty($env:DISCOGS_TOKEN)) {
+            Write-Error "DISCOGS_TOKEN environment variable is not set. Please add it to GitHub Secrets."
+            exit 1
+          }
+
           # Set up Discogs API configuration inline
           # This follows the pattern from Config.example.ps1
 
@@ -80,6 +86,7 @@ jobs:
             "`$DiscogsToken = `"`$env:DISCOGS_TOKEN`""
 
           # Replace labelId if provided via workflow input
+          # Handle both quoted and unquoted numeric values
           if ($env:LABEL_ID) {
             $scriptContent = $scriptContent -replace `
               '(?m)^\s*\$labelId\s*=\s*\d+', `
