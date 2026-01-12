@@ -273,7 +273,7 @@ foreach ($release in $numberedReleases) {
         Start-Sleep -Milliseconds 1000
         
     } catch {
-        Write-Host "  ⚠ ERROR fetching release $($release.id): $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  ERROR fetching release $($release.id): $($_.Exception.Message)" -ForegroundColor Red
         if ($_.Exception.Response) {
             $statusCode = $_.Exception.Response.StatusCode.value__
             Write-Host "  HTTP Status: $statusCode" -ForegroundColor Red
