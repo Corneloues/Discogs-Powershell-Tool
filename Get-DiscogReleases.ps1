@@ -40,6 +40,9 @@ if (-not $whereRole) { throw "WHERE_ROLE environment variable is required" }
 if (-not $whereMatch) { throw "WHERE_MATCH environment variable is required" }
 if (-not $fileName) { throw "FILE_NAME environment variable is required" }
 
+# Set error action preference to stop on errors
+$ErrorActionPreference = "Stop"
+
 # Parse and validate label ID
 try {
     $labelId = [int]$labelIdStr
@@ -53,6 +56,24 @@ $Headers = @{
     "Authorization" = "Discogs token=$DiscogsToken"
 }
 
+# ============================================================================
+# STARTUP LOGGING
+# ============================================================================
+Write-Host "=== Discogs Release Extraction Started ===" -ForegroundColor Cyan
+Write-Host "Base URL: $BaseUrl"
+Write-Host "Label ID: $labelId"
+Write-Host "Filter - Type: $whereType, Role: $whereRole, Match: $whereMatch"
+Write-Host "Output File: $fileName.csv"
+
+# Sanitize token for logging (only show first/last 4 chars)
+$tokenDisplay = if ($DiscogsToken.Length -gt 8) {
+    "$($DiscogsToken.Substring(0,4))...$($DiscogsToken.Substring($DiscogsToken.Length-4))"
+} else {
+    "****"
+}
+Write-Host "Token: $tokenDisplay"
+Write-Host ""
+
 # Import helper functions
 . "$PSScriptRoot/DiscogsHelpers.ps1"
 
@@ -62,6 +83,13 @@ $Headers = @{
 
 # Step 1: Retrieve all releases from the specified label
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
+
+# Log results of Step 1
+Write-Host "✓ Fetched $($allReleases.Count) total releases from label $labelId" -ForegroundColor Green
+if ($allReleases.Count -eq 0) {
+    Write-Host "WARNING: No releases returned from API!" -ForegroundColor Yellow
+}
+Write-Host ""
 
 # Step 2: Filter releases based on configured criteria and sort by number
 # Only processes releases that match:
@@ -76,6 +104,18 @@ $numberedMasters = $allReleases |
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
+# Log results of Step 2
+Write-Host "✓ Filtered to $($numberedMasters.Count) releases matching criteria" -ForegroundColor Green
+if ($numberedMasters.Count -eq 0) {
+    Write-Host "WARNING: No releases matched the filter criteria (Type=$whereType, Role=$whereRole, Match=$whereMatch)" -ForegroundColor Yellow
+} else {
+    Write-Host "First few titles matched:"
+    $numberedMasters | Select-Object -First 3 | ForEach-Object {
+        Write-Host "  - $($_.title)" -ForegroundColor Gray
+    }
+}
+Write-Host ""
+
 # Step 3: Process each master release to extract track information
 # For each master: fetch all versions, then all tracks from each version
 $rows = @()
@@ -83,15 +123,63 @@ $rows = @()
 foreach ($master in $numberedMasters) {
     # Extract issue number from title (e.g., "Now 50" → 50)
     $issueNumber = [int]([regex]::Match($master.title, '\d+').Value)
+    
+    # Log progress
+    Write-Host "Processing: $($master.title) (Issue $issueNumber)..." -ForegroundColor Cyan
 
     # Step 3a: Get all versions (different pressings/formats) of this master
     $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
-    $versions    = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
+    try {
+        $versions = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
+        
+        # Validate response
+        if (-not $versions.versions) {
+            Write-Host "  WARNING: No versions found for master $($master.id)" -ForegroundColor Yellow
+            continue
+        }
+    } catch {
+        $statusCode = $_.Exception.Response.StatusCode.value__
+        Write-Host "  ERROR: API call failed - $versionsUrl" -ForegroundColor Red
+        Write-Host "  Status Code: $statusCode" -ForegroundColor Red
+        Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
+        
+        if ($statusCode -eq 401 -or $statusCode -eq 403) {
+            Write-Host "  Authentication failed. Check your DISCOGS_TOKEN." -ForegroundColor Red
+        } elseif ($statusCode -eq 429) {
+            Write-Host "  Rate limit exceeded. Consider adding delays between requests." -ForegroundColor Red
+        }
+        
+        throw
+    }
 
     foreach ($v in $versions.versions) {
         # Step 3b: Get detailed release information including tracklist
-        $releaseUrl  = "$BaseUrl/releases/$($v.id)"
-        $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+        $releaseUrl = "$BaseUrl/releases/$($v.id)"
+        try {
+            $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+            
+            # Validate response has tracklist
+            if (-not $releaseData.tracklist) {
+                Write-Host "  WARNING: No tracklist found for release $($v.id)" -ForegroundColor Yellow
+                continue
+            }
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            Write-Host "  ERROR: API call failed - $releaseUrl" -ForegroundColor Red
+            Write-Host "  Status Code: $statusCode" -ForegroundColor Red
+            Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
+            
+            if ($statusCode -eq 401 -or $statusCode -eq 403) {
+                Write-Host "  Authentication failed. Check your DISCOGS_TOKEN." -ForegroundColor Red
+            } elseif ($statusCode -eq 429) {
+                Write-Host "  Rate limit exceeded. Consider adding delays between requests." -ForegroundColor Red
+            }
+            
+            throw
+        }
+        
+        # Add rate limiting protection
+        Start-Sleep -Milliseconds 100
 
         $year = $releaseData.year
 
@@ -134,8 +222,20 @@ foreach ($master in $numberedMasters) {
     }
 }
 
+# Log results after processing all releases
+Write-Host ""
+Write-Host "✓ Collected $($rows.Count) total tracks from all releases" -ForegroundColor Green
+if ($rows.Count -eq 0) {
+    Write-Host "WARNING: No tracks were collected! CSV will be empty." -ForegroundColor Yellow
+}
+Write-Host ""
+
 # Step 4: Export all collected track data to CSV file
 # Sorted by: Issue → Format → Version → Disc → Track Number
 $rows | Sort-Object Issue, Format, Version, Disc, TrackNumber |
     Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\$fileName.csv"
+
+# Log completion
+Write-Host "✓ Successfully exported $($rows.Count) tracks to $fileName.csv" -ForegroundColor Green
+Write-Host "=== Extraction Complete ===" -ForegroundColor Cyan
 

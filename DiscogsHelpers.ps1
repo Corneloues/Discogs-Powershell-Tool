@@ -44,13 +44,53 @@ function Get-DiscogsLabelReleases {
     )
     $page = 1
     $results = @()
+    
+    Write-Host "  Fetching releases from label $LabelId (paginated)..."
 
     do {
         $url = "$BaseUrl/labels/$LabelId/releases?per_page=$PerPage&page=$page"
-        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
-        $results += $response.releases
-        $page++
+        
+        try {
+            $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get
+            
+            # Validate response
+            if (-not $response.releases) {
+                Write-Host "  WARNING: No releases in response for page $page" -ForegroundColor Yellow
+                break
+            }
+            
+            if (-not $response.pagination) {
+                Write-Host "  WARNING: No pagination info in response" -ForegroundColor Yellow
+                $results += $response.releases
+                break
+            }
+            
+            Write-Host "    Page $page - Fetched $($response.releases.Count) releases"
+            
+            # Log total pages on first iteration
+            if ($page -eq 1) {
+                Write-Host "  Total pages to fetch: $($response.pagination.pages)"
+            }
+            
+            $results += $response.releases
+            $page++
+        } catch {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            Write-Host "  ERROR: API call failed - $url" -ForegroundColor Red
+            Write-Host "  Status Code: $statusCode" -ForegroundColor Red
+            Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
+            
+            if ($statusCode -eq 401 -or $statusCode -eq 403) {
+                Write-Host "  Authentication failed. Check your DISCOGS_TOKEN." -ForegroundColor Red
+            } elseif ($statusCode -eq 429) {
+                Write-Host "  Rate limit exceeded. Consider adding delays between requests." -ForegroundColor Red
+            }
+            
+            throw
+        }
     } while ($response.pagination.page -lt $response.pagination.pages)
+    
+    Write-Host "  Completed: Retrieved $($results.Count) total releases"
 
     return $results
 }
