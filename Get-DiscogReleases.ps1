@@ -119,7 +119,8 @@ if ($script:enableDiagnostics) {
     Write-Host ""
     Write-Host "Releases matching Type=$whereType and Role=$whereRole (but may not match title pattern):"
     $typeRoleMatches = $allReleases | Where-Object {
-        $_.type -eq $whereType -and $_.role -eq $whereRole
+#        $_.type -eq $whereType -and $_.role -eq $whereRole
+        $_.type -match $whereType -and $_.role -match $whereRole
     }
     Write-Host "  Found $($typeRoleMatches.Count) releases matching Type and Role"
     if ($typeRoleMatches.Count -gt 0) {
