@@ -15,9 +15,9 @@ name: Extract Discogs Releases
         description: 'Override output filename without .csv extension (optional)'
         required: false
         type: string
-  schedule:
-    # Run weekly on Sundays at midnight UTC
-    - cron: '0 0 * * 0'
+#  schedule:
+#    # Run weekly on Sundays at midnight UTC
+#    - cron: '0 0 * * 0'
 
 # Grant write permissions to commit changes back to the repository
 permissions:
