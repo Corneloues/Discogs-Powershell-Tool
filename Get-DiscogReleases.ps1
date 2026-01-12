@@ -91,25 +91,20 @@ if ($script:enableDiagnostics) {
     Write-Host "DIAGNOSTIC MODE ENABLED"
     Write-Host "================================================"
     
-    # Show unique Type values
+    # Show available properties from API response
     Write-Host ""
-    Write-Host "Unique 'type' values found in releases:"
-    $allReleases | Group-Object -Property type | ForEach-Object {
-        Write-Host "  - $($_.Name): $($_.Count) releases"
-    }
-    
-    # Show unique Role values
-    Write-Host ""
-    Write-Host "Unique 'role' values found in releases:"
-    $allReleases | Group-Object -Property role | ForEach-Object {
-        Write-Host "  - $($_.Name): $($_.Count) releases"
+    Write-Host "Available properties from API response:"
+    if ($allReleases.Count -gt 0) {
+        $allReleases[0].PSObject.Properties.Name | ForEach-Object {
+            Write-Host "  - $_"
+        }
     }
     
     # Show sample titles (first 20)
     Write-Host ""
     Write-Host "Sample of release titles (first 20):"
     $allReleases | Select-Object -First 20 | ForEach-Object {
-        Write-Host "  - ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+        Write-Host "  - ""$($_.title)"" (ID: $($_.id), Year: $($_.year))"
     }
     
     # Show releases that match the title pattern
@@ -136,7 +131,7 @@ if ($script:enableDiagnostics) {
     $regexMatches = $allReleases | Where-Object { $_.title -match $whereMatch } | Select-Object -First 10
     if ($regexMatches.Count -gt 0) {
         $regexMatches | ForEach-Object {
-            Write-Host "  ✓ ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+            Write-Host "  ✓ ""$($_.title)"" (ID: $($_.id), Year: $($_.year))"
         }
     } else {
         Write-Host "  ⚠ No titles match the regex pattern"
@@ -226,7 +221,12 @@ foreach ($release in $filteredReleases) {
         $releaseUrl  = "$BaseUrl/releases/$($release.id)"
         $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
         
-        Write-Host "  Year: $($releaseData.year), Format: $($releaseData.formats[0].name)" -ForegroundColor Gray
+        $formatDisplay = if ($releaseData.formats -and $releaseData.formats.Count -gt 0) {
+            $releaseData.formats[0].name
+        } else {
+            "Unknown"
+        }
+        Write-Host "  Year: $($releaseData.year), Format: $formatDisplay" -ForegroundColor Gray
         Write-Host "  Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
         
         $year = $releaseData.year
