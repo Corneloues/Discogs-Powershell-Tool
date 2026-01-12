@@ -91,6 +91,71 @@ if ($allReleases.Count -eq 0) {
 }
 Write-Host ""
 
+# Diagnostic output (if enabled)
+if ($env:ENABLE_DIAGNOSTICS -eq 'true') {
+    Write-Host ""
+    Write-Host "================================================"
+    Write-Host "DIAGNOSTIC MODE ENABLED"
+    Write-Host "================================================"
+    Write-Host ""
+    
+    # Show unique type values
+    Write-Host "Unique 'type' values found in releases:"
+    $uniqueTypes = $allReleases | Select-Object -ExpandProperty type -Unique | Sort-Object
+    foreach ($t in $uniqueTypes) {
+        $count = ($allReleases | Where-Object { $_.type -eq $t }).Count
+        Write-Host "  - '$t' ($count releases)"
+    }
+    Write-Host ""
+    
+    # Show unique role values
+    Write-Host "Unique 'role' values found in releases:"
+    $uniqueRoles = $allReleases | Select-Object -ExpandProperty role -Unique | Sort-Object
+    foreach ($r in $uniqueRoles) {
+        $count = ($allReleases | Where-Object { $_.role -eq $r }).Count
+        Write-Host "  - '$r' ($count releases)"
+    }
+    Write-Host ""
+    
+    # Show sample titles
+    Write-Host "Sample of first 20 release titles:"
+    $sampleReleases = $allReleases | Select-Object -First 20
+    foreach ($rel in $sampleReleases) {
+        Write-Host "  - Title: '$($rel.title)' | Type: '$($rel.type)' | Role: '$($rel.role)'"
+    }
+    Write-Host ""
+    
+    # Show releases that match the title pattern but not type/role
+    Write-Host "Releases matching title pattern '$whereMatch' (regardless of type/role):"
+    $titleMatches = $allReleases | Where-Object { $_.title -match $whereMatch } | Select-Object -First 20
+    if ($titleMatches.Count -gt 0) {
+        foreach ($rel in $titleMatches) {
+            Write-Host "  - '$($rel.title)' | Type: '$($rel.type)' | Role: '$($rel.role)' | ID: $($rel.id)"
+        }
+    } else {
+        Write-Host "  No releases match the title pattern!"
+    }
+    Write-Host ""
+    
+    # Show releases that DON'T match the filter
+    Write-Host "First 10 releases that DON'T match filter criteria:"
+    $nonMatches = $allReleases | Where-Object {
+        -not ($_.type -eq $whereType -and $_.role -eq $whereRole -and $_.title -match $whereMatch)
+    } | Select-Object -First 10
+    foreach ($rel in $nonMatches) {
+        Write-Host "  - Title: '$($rel.title)'"
+        Write-Host "    Type: '$($rel.type)' (Filter expects: '$whereType') - Match: $($rel.type -eq $whereType)"
+        Write-Host "    Role: '$($rel.role)' (Filter expects: '$whereRole') - Match: $($rel.role -eq $whereRole)"
+        Write-Host "    Title Match: $($rel.title -match $whereMatch)"
+        Write-Host ""
+    }
+    
+    Write-Host "================================================"
+    Write-Host "END DIAGNOSTICS"
+    Write-Host "================================================"
+    Write-Host ""
+}
+
 # Step 2: Filter releases based on configured criteria and sort by number
 # Only processes releases that match:
 # - Type (e.g., "master" releases)
