@@ -116,7 +116,8 @@ foreach ($master in $numberedMasters) {
     try {
         $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
         $versions    = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
-        Write-Host "  Found $($versions.versions.Count) versions"
+        $versionCount = if ($versions -and $versions.versions) { $versions.versions.Count } else { 0 }
+        Write-Host "  Found $versionCount versions"
     } catch {
         Write-Host "  ⚠ ERROR fetching versions: $($_.Exception.Message)" -ForegroundColor Red
         if ($_.Exception.Response) {
@@ -148,8 +149,9 @@ foreach ($master in $numberedMasters) {
 
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
 
+        $trackCount = if ($releaseData.tracklist) { $releaseData.tracklist.Count } else { 0 }
         Write-Host "    Processing release ID $($v.id) - $($releaseData.year) - $formatName"
-        Write-Host "      Tracks: $($releaseData.tracklist.Count)"
+        Write-Host "      Tracks: $trackCount"
 
         # Step 3d: Process each track in the release
         foreach ($t in $releaseData.tracklist) {
