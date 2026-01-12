@@ -11,14 +11,16 @@
     BASE_URL      - Discogs API base URL (required)
     USER_AGENT    - User agent string for API requests (required)
     LABEL_ID      - Discogs label ID to query (required)
-    WHERE_TYPE    - Filter type for releases (e.g., "master") (required)
-    WHERE_ROLE    - Filter role for releases (e.g., "Main") (required)
     WHERE_MATCH   - Regex pattern to match titles (required)
     FILE_NAME     - Output CSV filename without extension (required)
+    WHERE_TYPE    - Not used (kept for backward compatibility)
+    WHERE_ROLE    - Not used (kept for backward compatibility)
     ENABLE_DIAGNOSTICS - Enable diagnostic output (optional, defaults to false)
 
 .NOTES
     This script is designed to run in GitHub Actions with secrets and variables.
+    Note: The /labels/{id}/releases endpoint returns individual releases, not masters.
+    The 'type' and 'role' fields don't exist in this API response.
 #>
 
 # Read configuration from environment variables (passed from GitHub Actions)
@@ -26,8 +28,10 @@ $DiscogsToken = $env:DISCOGS_TOKEN
 $BaseUrl      = $env:BASE_URL
 $UserAgent    = $env:USER_AGENT
 $labelIdStr   = $env:LABEL_ID
-$whereType    = $env:WHERE_TYPE
-$whereRole    = $env:WHERE_ROLE
+# Note: WHERE_TYPE and WHERE_ROLE are not used because the /labels/{id}/releases 
+# endpoint doesn't return these fields. Filtering is done by title pattern only.
+$whereType    = $env:WHERE_TYPE    # Not used - kept for backward compatibility
+$whereRole    = $env:WHERE_ROLE    # Not used - kept for backward compatibility
 $whereMatch   = $env:WHERE_MATCH
 $fileName     = $env:FILE_NAME
 $script:enableDiagnostics = $env:ENABLE_DIAGNOSTICS -eq 'true'
@@ -37,8 +41,6 @@ if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required"
 if (-not $BaseUrl) { throw "BASE_URL environment variable is required" }
 if (-not $UserAgent) { throw "USER_AGENT environment variable is required" }
 if (-not $labelIdStr) { throw "LABEL_ID environment variable is required" }
-if (-not $whereType) { throw "WHERE_TYPE environment variable is required" }
-if (-not $whereRole) { throw "WHERE_ROLE environment variable is required" }
 if (-not $whereMatch) { throw "WHERE_MATCH environment variable is required" }
 if (-not $fileName) { throw "FILE_NAME environment variable is required" }
 
@@ -64,7 +66,7 @@ $Headers = @{
 Write-Host "=== Discogs Release Extraction Started ===" -ForegroundColor Cyan
 Write-Host "Base URL: $BaseUrl"
 Write-Host "Label ID: $labelId"
-Write-Host "Filter - Type: $whereType, Role: $whereRole, Match: $whereMatch"
+Write-Host "Filter - Match: $whereMatch"
 Write-Host "Output File: $fileName.csv"
 
 # Sanitize token for logging (only show first/last 4 chars)
@@ -190,121 +192,69 @@ if ($allReleases.Count -eq 0) {
 }
 Write-Host ""
 
-# Step 2: Filter releases based on configured criteria and sort by number
-# Only processes releases that match:
-# - Type (e.g., "master" releases)
-# - Role (e.g., "Main" releases)  
-# - Title pattern (e.g., "Now That's What I Call Music\s*\d+")
-$numberedMasters = $allReleases |
+# Step 2: Filter releases based on title pattern and sort by issue number
+# Note: The /labels/{id}/releases endpoint returns individual releases, not masters.
+# The 'type' and 'role' fields don't exist in this API response, so we filter by title only.
+$numberedReleases = $allReleases |
     Where-Object {
-        $_.type -eq $whereType -and
-        $_.role -eq $whereRole -and
         $_.title -match $whereMatch
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
 # Log results of Step 2
-Write-Host "✓ Filtered to $($numberedMasters.Count) releases matching criteria" -ForegroundColor Green
-if ($numberedMasters.Count -eq 0) {
-    Write-Host "WARNING: No releases matched the filter criteria (Type=$whereType, Role=$whereRole, Match=$whereMatch)" -ForegroundColor Yellow
+Write-Host "✓ Filtered to $($numberedReleases.Count) releases matching criteria" -ForegroundColor Green
+if ($numberedReleases.Count -eq 0) {
+    Write-Host "WARNING: No releases matched the filter criteria (Match=$whereMatch)" -ForegroundColor Yellow
 } else {
     Write-Host "First few titles matched:"
-    $numberedMasters | Select-Object -First 3 | ForEach-Object {
+    $numberedReleases | Select-Object -First 3 | ForEach-Object {
         Write-Host "  - $($_.title)" -ForegroundColor Gray
     }
 }
 Write-Host ""
 
-# Step 3: Process each master release to extract track information
-# For each master: fetch all versions, then all tracks from each version
+# Step 3: Process each release to extract track information
+# Each release is fetched directly from /releases/{id} - no masters/versions needed.
 $rows = @()
 
-foreach ($master in $numberedMasters) {
-    # Extract issue number from title (e.g., "Now 50" → 50)
-    $issueNumber = [int]([regex]::Match($master.title, '\d+').Value)
+foreach ($release in $numberedReleases) {
+    # Extract issue number from title (e.g., "Now That's What I Call Music 50" → 50)
+    $issueNumber = [int]([regex]::Match($release.title, '\d+').Value)
     
-    # Log progress
-    Write-Host "Processing: $($master.title) (Issue $issueNumber)..." -ForegroundColor Cyan
+    Write-Host "Processing: $($release.title) (Issue #$issueNumber)..." -ForegroundColor Cyan
 
-    # Step 3a: Get all versions (different pressings/formats) of this master
-    $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
     try {
-        $versions = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
+        # Fetch the release directly (no masters/versions needed)
+        $releaseUrl = "$BaseUrl/releases/$($release.id)"
+        $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
         
-        # Validate response
-        if (-not $versions.versions) {
-            Write-Host "  WARNING: No versions found for master $($master.id)" -ForegroundColor Yellow
-            continue
-        }
-    } catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
-        Write-Host "  ERROR: API call failed - $versionsUrl" -ForegroundColor Red
-        Write-Host "  Status Code: $statusCode" -ForegroundColor Red
-        Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
-        
-        if ($statusCode -eq 401 -or $statusCode -eq 403) {
-            Write-Host "  Authentication failed. Check your DISCOGS_TOKEN." -ForegroundColor Red
-        } elseif ($statusCode -eq 429) {
-            Write-Host "  Rate limit exceeded. Consider adding delays between requests." -ForegroundColor Red
-        }
-        
-        throw
-    }
-
-    foreach ($v in $versions.versions) {
-        # Step 3b: Get detailed release information including tracklist
-        $releaseUrl = "$BaseUrl/releases/$($v.id)"
-        try {
-            $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
-            
-            # Validate response has tracklist
-            if (-not $releaseData.tracklist) {
-                Write-Host "  WARNING: No tracklist found for release $($v.id)" -ForegroundColor Yellow
-                continue
-            }
-        } catch {
-            $statusCode = $_.Exception.Response.StatusCode.value__
-            Write-Host "  ERROR: API call failed - $releaseUrl" -ForegroundColor Red
-            Write-Host "  Status Code: $statusCode" -ForegroundColor Red
-            Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
-            
-            if ($statusCode -eq 401 -or $statusCode -eq 403) {
-                Write-Host "  Authentication failed. Check your DISCOGS_TOKEN." -ForegroundColor Red
-            } elseif ($statusCode -eq 429) {
-                Write-Host "  Rate limit exceeded. Consider adding delays between requests." -ForegroundColor Red
-            }
-            
-            throw
-        }
-        
-        # Add rate limiting protection
-        Start-Sleep -Milliseconds 100
-
         $year = $releaseData.year
-
-        # Step 3c: Determine format and version label (e.g., "CD-Remaster")
+        
+        # Extract format information
         $firstFormat = $releaseData.formats | Select-Object -First 1
-        $formatName  = $firstFormat.name
+        $formatName = $firstFormat.name
         $descriptions = @()
         if ($firstFormat.descriptions) { $descriptions = $firstFormat.descriptions }
-
+        
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
-
-        # Step 3d: Process each track in the release
+        
+        Write-Host "  Format: $formatName-$versionLabel, Year: $year, Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
+        
+        # Process each track in the release
         foreach ($t in $releaseData.tracklist) {
             if (-not $t.title) { continue }  # Skip tracks without titles
-
-            # Parse track position (e.g., "A1" or "1-05") into disc and track number
+            
+            # Parse track position (e.g., "A1" or "1-05")
             $parsed = Parse-DiscAndTrack -Position $t.position
-            $disc  = $parsed.Disc
+            $disc = $parsed.Disc
             $track = $parsed.TrackNumber
-
-            # Extract artist name (may be in 'artists' array for VA compilations)
+            
+            # Extract artist name
             $artistName = $null
             if ($t.artists -and $t.artists.Count -gt 0) {
                 $artistName = ($t.artists | Select-Object -First 1).name
             }
-
+            
             # Add track data to output collection
             $rows += [pscustomobject]@{
                 Issue            = $issueNumber
@@ -318,6 +268,22 @@ foreach ($master in $numberedMasters) {
                 DiscogsReleaseID = $releaseData.id
             }
         }
+        
+        # Add rate limiting delay
+        Start-Sleep -Milliseconds 1000
+        
+    } catch {
+        Write-Host "  ⚠ ERROR fetching release $($release.id): $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+            Write-Host "  HTTP Status: $statusCode" -ForegroundColor Red
+            
+            if ($statusCode -eq 429) {
+                Write-Host "  Rate limit hit - waiting 60s..." -ForegroundColor Yellow
+                Start-Sleep -Seconds 60
+            }
+        }
+        continue
     }
 }
 
