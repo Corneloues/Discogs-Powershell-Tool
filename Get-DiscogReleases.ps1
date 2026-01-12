@@ -119,7 +119,9 @@ foreach ($master in $numberedMasters) {
         Write-Host "  Found $($versions.versions.Count) versions"
     } catch {
         Write-Host "  ⚠ ERROR fetching versions: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host "  HTTP Status: $($_.Exception.Response.StatusCode.value__)" -ForegroundColor Red
+        if ($_.Exception.Response) {
+            Write-Host "  HTTP Status: $($_.Exception.Response.StatusCode.value__)" -ForegroundColor Red
+        }
         continue
     }
 
