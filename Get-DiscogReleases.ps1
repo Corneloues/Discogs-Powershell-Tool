@@ -263,6 +263,7 @@ foreach ($release in $numberedReleases) {
         }
         
         # Filter by version: Only Original releases (skip remasters, reissues, etc.)
+        # Note: Version label format is always "FormatName-VersionType" (e.g., "CD-Original")
         if ($versionLabel -notlike "*-Original") {
             Write-Host "  Skipping: Version '$versionLabel' is not an Original release" -ForegroundColor Yellow
             continue
