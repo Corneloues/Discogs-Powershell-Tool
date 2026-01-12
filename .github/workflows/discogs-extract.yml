@@ -74,15 +74,15 @@ jobs:
 
           # Replace the hardcoded token with environment variable
           # The script has: $DiscogsToken = "..."
-          # We replace it with our secret token
+          # We replace it with our secret token (with multiline mode to handle any position)
           $scriptContent = $scriptContent -replace `
-            '^\$DiscogsToken\s*=\s*"[^"]*"', `
+            '(?m)^\s*\$DiscogsToken\s*=\s*"[^"]*"', `
             "`$DiscogsToken = `"`$env:DISCOGS_TOKEN`""
 
           # Replace labelId if provided via workflow input
           if ($env:LABEL_ID) {
             $scriptContent = $scriptContent -replace `
-              '^\$labelId\s*=\s*\d+', `
+              '(?m)^\s*\$labelId\s*=\s*\d+', `
               "`$labelId = $env:LABEL_ID"
           }
 
@@ -116,8 +116,8 @@ jobs:
       - name: Commit CSV output files
         id: commit
         run: |
-          # Add all CSV files
-          git add *.csv
+          # Add all CSV files (if any exist)
+          git add *.csv 2>/dev/null || true
 
           # Check if there are changes to commit
           if git diff --staged --quiet; then
