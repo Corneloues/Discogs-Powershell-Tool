@@ -89,10 +89,10 @@ The workflow is configured to run automatically every **Sunday at midnight UTC**
 - `BASE_URL` - Discogs API base URL: `https://api.discogs.com`
 - `USER_AGENT` - Your API user agent: `SoundchaserUKDiscogsScript/1.0`
 - `NOW_UK_SERIES` - Discogs label ID: `563691`
-- `NOW_UK_WHERE_TYPE` - Filter releases by type: `master`
-- `NOW_UK_WHERE_ROLE` - Filter releases by role: `Main`
 - `NOW_UK_WHERE_MATCH` - Title regex pattern: `Now That's What I Call Music\s*\d+`
 - `NOW_UK_FILE_NAME` - Output filename: `Now_UK_1to122_AllVersions_Tracks`
+
+**Note:** The `NOW_UK_WHERE_TYPE` and `NOW_UK_WHERE_ROLE` variables are no longer used because the `/labels/{id}/releases` API endpoint does not return `type` or `role` fields. Filtering is now done by title pattern only.
 
 ---
 
@@ -136,10 +136,10 @@ Click **"New repository variable"** for each of the following:
 | `BASE_URL` | `https://api.discogs.com` | Discogs API base URL (usually doesn't change) |
 | `USER_AGENT` | `YourUsername/YourScript/1.0` | Must include your Discogs username per API guidelines |
 | `NOW_UK_SERIES` | `563691` | Discogs label ID (see below for how to find this) |
-| `NOW_UK_WHERE_TYPE` | `master` | Filter by release type: `master`, `release`, etc. |
-| `NOW_UK_WHERE_ROLE` | `Main` | Filter by role: `Main`, `TrackAppearance`, etc. |
 | `NOW_UK_WHERE_MATCH` | `Now That's What I Call Music\s*\d+` | Regex pattern to match titles |
 | `NOW_UK_FILE_NAME` | `Now_UK_Tracks` | Output CSV filename (without .csv extension) |
+
+**Note:** The variables `NOW_UK_WHERE_TYPE` and `NOW_UK_WHERE_ROLE` are no longer used because the `/labels/{id}/releases` API endpoint does not return `type` or `role` fields. Filtering is now done by title pattern only.
 
 **Finding a Discogs Label ID:**
 1. Go to [Discogs.com](https://www.discogs.com/)
@@ -196,10 +196,7 @@ Issue,Year,Format,Version,Disc,TrackNumber,Title,Artist,DiscogsReleaseID
 
 ### Filter by Release Type
 
-The `NOW_UK_WHERE_TYPE` variable filters releases:
-- `master` - Master releases (recommended - avoids duplicates)
-- `release` - Individual releases
-- Leave empty to include all types
+**Note:** The `NOW_UK_WHERE_TYPE` and `NOW_UK_WHERE_ROLE` variables are no longer used because the `/labels/{id}/releases` API endpoint does not return these fields. The script now fetches releases directly without the master/versions layer. Filtering is done by title pattern only using the `NOW_UK_WHERE_MATCH` variable.
 
 ### Customize Title Matching
 

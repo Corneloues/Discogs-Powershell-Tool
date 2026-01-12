@@ -11,11 +11,15 @@
     BASE_URL      - Discogs API base URL (required)
     USER_AGENT    - User agent string for API requests (required)
     LABEL_ID      - Discogs label ID to query (required)
+    WHERE_MATCH   - Regex pattern to match release titles (required)
     WHERE_MATCH   - Regex pattern to match titles (required)
     FILE_NAME     - Output CSV filename without extension (required)
     WHERE_TYPE    - Not used (kept for backward compatibility)
     WHERE_ROLE    - Not used (kept for backward compatibility)
     ENABLE_DIAGNOSTICS - Enable diagnostic output (optional, defaults to false)
+    
+    NOTE: WHERE_TYPE and WHERE_ROLE are not used because the /labels/{id}/releases 
+          endpoint does not return these fields. Filtering is done by title pattern only.
 
 .NOTES
     This script is designed to run in GitHub Actions with secrets and variables.
@@ -66,6 +70,7 @@ $Headers = @{
 Write-Host "=== Discogs Release Extraction Started ===" -ForegroundColor Cyan
 Write-Host "Base URL: $BaseUrl"
 Write-Host "Label ID: $labelId"
+Write-Host "Filter - Title Match Pattern: $whereMatch"
 Write-Host "Filter - Match: $whereMatch"
 Write-Host "Output File: $fileName.csv"
 
@@ -96,37 +101,28 @@ if ($script:enableDiagnostics) {
     Write-Host "DIAGNOSTIC MODE ENABLED"
     Write-Host "================================================"
     
-    # Show unique Type values
+    # Show available properties from API response
     Write-Host ""
-    Write-Host "Unique 'type' values found in releases:"
-    $allReleases | Group-Object -Property type | ForEach-Object {
-        Write-Host "  - $($_.Name): $($_.Count) releases"
-    }
-    
-    # Show unique Role values
-    Write-Host ""
-    Write-Host "Unique 'role' values found in releases:"
-    $allReleases | Group-Object -Property role | ForEach-Object {
-        Write-Host "  - $($_.Name): $($_.Count) releases"
+    Write-Host "Available properties from API response:"
+    if ($allReleases.Count -gt 0) {
+        $allReleases[0].PSObject.Properties.Name | ForEach-Object {
+            Write-Host "  - $_"
+        }
     }
     
     # Show sample titles (first 20)
     Write-Host ""
     Write-Host "Sample of release titles (first 20):"
     $allReleases | Select-Object -First 20 | ForEach-Object {
-        Write-Host "  - ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+        Write-Host "  - ""$($_.title)"" (ID: $($_.id), Year: $($_.year))"
     }
     
-    # Show releases that match Type and Role but not the title pattern
+    # Show releases that match the title pattern
     Write-Host ""
-    Write-Host "Releases matching Type=$whereType and Role=$whereRole (but may not match title pattern):"
-#     $typeRoleMatches = $allReleases | Where-Object {
-# #        $_.type -eq $whereType -and $_.role -eq $whereRole
-#         $_.type -match $whereType -or $_.role -match $whereRole
-#     }
+    Write-Host "Releases matching title pattern '$whereMatch' (type/role filters not available in this API endpoint):"
     $typeRoleMatches = $allReleases
     
-    Write-Host "  Found $($typeRoleMatches.Count) releases matching Type and Role"
+    Write-Host "  Found $($typeRoleMatches.Count) total releases"
     if ($typeRoleMatches.Count -gt 0) {
         Write-Host "  Sample titles:"
         $typeRoleMatches | Select-Object -First 10 | ForEach-Object {
@@ -141,7 +137,7 @@ if ($script:enableDiagnostics) {
     $regexMatches = $allReleases | Where-Object { $_.title -match $whereMatch } | Select-Object -First 10
     if ($regexMatches.Count -gt 0) {
         $regexMatches | ForEach-Object {
-            Write-Host "  ✓ ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+            Write-Host "  ✓ ""$($_.title)"" (ID: $($_.id), Year: $($_.year))"
         }
     } else {
         Write-Host "  ⚠ No titles match the regex pattern"
@@ -192,6 +188,10 @@ if ($allReleases.Count -eq 0) {
 }
 Write-Host ""
 
+# Step 2: Filter releases based on title pattern only and sort by number
+# The /labels/{id}/releases endpoint does not return 'type' or 'role' fields,
+# so we can only filter by title pattern
+$filteredReleases = $allReleases |
 # Step 2: Filter releases based on title pattern and sort by issue number
 # Note: The /labels/{id}/releases endpoint returns individual releases, not masters.
 # The 'type' and 'role' fields don't exist in this API response, so we filter by title only.
@@ -199,9 +199,19 @@ $numberedReleases = $allReleases |
     Where-Object {
         $_.title -match $whereMatch
     } |
-    Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
+    Sort-Object { 
+        $match = [regex]::Match($_.title, '\d+')
+        if ($match.Success) { [int]$match.Value } else { 0 }
+    }
 
 # Log results of Step 2
+Write-Host "✓ Filtered to $($filteredReleases.Count) releases matching title pattern" -ForegroundColor Green
+if ($filteredReleases.Count -eq 0) {
+    Write-Host "WARNING: No releases matched the title pattern: $whereMatch" -ForegroundColor Yellow
+} else {
+    Write-Host "  Matched releases:" -ForegroundColor Cyan
+    $filteredReleases | Select-Object -First 10 | ForEach-Object {
+        Write-Host "    - $($_.title) (ID: $($_.id))" -ForegroundColor Cyan
 Write-Host "✓ Filtered to $($numberedReleases.Count) releases matching criteria" -ForegroundColor Green
 if ($numberedReleases.Count -eq 0) {
     Write-Host "WARNING: No releases matched the filter criteria (Match=$whereMatch)" -ForegroundColor Yellow
@@ -213,6 +223,74 @@ if ($numberedReleases.Count -eq 0) {
 }
 Write-Host ""
 
+# Step 3: Process each release directly to extract track information
+$rows = @()
+
+foreach ($release in $filteredReleases) {
+    # Extract issue number from title (e.g., "Now 50" → 50)
+    $match = [regex]::Match($release.title, '\d+')
+    $issueNumber = if ($match.Success) { [int]$match.Value } else { 0 }
+    
+    Write-Host "Processing: $($release.title) (Issue #$issueNumber, ID: $($release.id))..." -ForegroundColor Cyan
+    
+    try {
+        # Fetch full release details to get tracklist
+        $releaseUrl  = "$BaseUrl/releases/$($release.id)"
+        $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
+        
+        # Extract format information once
+        $formatName = if ($releaseData.formats -and $releaseData.formats.Count -gt 0) {
+            $releaseData.formats[0].name
+        } else {
+            "Unknown"
+        }
+        
+        Write-Host "  Year: $($releaseData.year), Format: $formatName" -ForegroundColor Gray
+        Write-Host "  Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
+        
+        $year = $releaseData.year
+        
+        # Get version label (keep existing logic)
+        $formatDescs = if ($releaseData.formats -and $releaseData.formats[0].descriptions) {
+            $releaseData.formats[0].descriptions
+        } else {
+            @()
+        }
+        $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $formatDescs
+        
+        # Process each track in the tracklist
+        foreach ($track in $releaseData.tracklist) {
+            if ($track.type_ -eq "track") {
+                $parsed = Parse-DiscAndTrack -Position $track.position
+                
+                $trackArtist = if ($track.artists -and $track.artists.Count -gt 0) {
+                    $track.artists[0].name
+                } else {
+                    "Various"
+                }
+                
+                $rows += [PSCustomObject]@{
+                    Issue            = $issueNumber
+                    Year             = $year
+                    Format           = $formatName
+                    Version          = $versionLabel
+                    Disc             = $parsed.Disc
+                    TrackNumber      = $parsed.TrackNumber
+                    Title            = $track.title
+                    Artist           = $trackArtist
+                    DiscogsReleaseID = $release.id
+                }
+            }
+        }
+        
+        # Rate limiting
+        Start-Sleep -Milliseconds 1000
+        
+    } catch {
+        Write-Host "  ⚠ ERROR fetching release $($release.id): $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.Exception.Response) {
+            Write-Host "  HTTP Status: $($_.Exception.Response.StatusCode.value__)" -ForegroundColor Red
+        }
 # Step 3: Process each release to extract track information
 # Each release is fetched directly from /releases/{id} - no masters/versions needed.
 $rows = @()
@@ -289,9 +367,12 @@ foreach ($release in $numberedReleases) {
 
 # Log results after processing all releases
 Write-Host ""
-Write-Host "✓ Collected $($rows.Count) total tracks from all releases" -ForegroundColor Green
+Write-Host "✓ Collected $($rows.Count) total tracks from $($filteredReleases.Count) releases" -ForegroundColor Green
+
 if ($rows.Count -eq 0) {
     Write-Host "WARNING: No tracks were collected! CSV will be empty." -ForegroundColor Yellow
+    Write-Host "  - Releases fetched: $($allReleases.Count)" -ForegroundColor Yellow
+    Write-Host "  - Releases matching filter: $($filteredReleases.Count)" -ForegroundColor Yellow
 }
 Write-Host ""
 
