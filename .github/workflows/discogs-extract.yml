@@ -42,8 +42,8 @@ jobs:
           # Variables (non-sensitive configuration):
           BASE_URL: ${{ vars.BASE_URL }}
           LABEL_ID: ${{ inputs.label_id || vars.NOW_UK_SERIES }}
-          WHERE_TYPE: ${{ vars.NOW_UK_WHERE_TYPE }}
-          WHERE_ROLE: ${{ vars.NOW_UK_WHERE_ROLE }}
+          # WHERE_TYPE: ${{ vars.NOW_UK_WHERE_TYPE }}  # Not used - field not in API
+          # WHERE_ROLE: ${{ vars.NOW_UK_WHERE_ROLE }}  # Not used - field not in API
           WHERE_MATCH: ${{ vars.NOW_UK_WHERE_MATCH }}
           FILE_NAME: ${{ inputs.file_name || vars.NOW_UK_FILE_NAME }}
           USER_AGENT: ${{ vars.USER_AGENT }}
