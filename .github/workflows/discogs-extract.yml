@@ -47,6 +47,7 @@ jobs:
           WHERE_MATCH: ${{ vars.NOW_UK_WHERE_MATCH }}
           FILE_NAME: ${{ inputs.file_name || vars.NOW_UK_FILE_NAME }}
           USER_AGENT: ${{ vars.USER_AGENT }}
+          ENABLE_DIAGNOSTICS: ${{ vars.ENABLE_DIAGNOSTICS || 'false' }}
         run: |
           # Execute the PowerShell script
           ./Get-DiscogReleases.ps1

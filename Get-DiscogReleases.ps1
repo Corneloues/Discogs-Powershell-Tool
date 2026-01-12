@@ -15,6 +15,7 @@
     WHERE_ROLE    - Filter role for releases (e.g., "Main") (required)
     WHERE_MATCH   - Regex pattern to match titles (required)
     FILE_NAME     - Output CSV filename without extension (required)
+    ENABLE_DIAGNOSTICS - Enable diagnostic output (optional, defaults to false)
 
 .NOTES
     This script is designed to run in GitHub Actions with secrets and variables.
@@ -29,6 +30,7 @@ $whereType    = $env:WHERE_TYPE
 $whereRole    = $env:WHERE_ROLE
 $whereMatch   = $env:WHERE_MATCH
 $fileName     = $env:FILE_NAME
+$enableDiagnostics = $env:ENABLE_DIAGNOSTICS -eq 'true'
 
 # Validate required environment variables
 if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required" }
@@ -83,6 +85,66 @@ Write-Host ""
 
 # Step 1: Retrieve all releases from the specified label
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
+
+# Diagnostic output (if enabled)
+if ($enableDiagnostics) {
+    Write-Host ""
+    Write-Host "================================================"
+    Write-Host "DIAGNOSTIC MODE ENABLED"
+    Write-Host "================================================"
+    
+    # Show unique Type values
+    Write-Host ""
+    Write-Host "Unique 'type' values found in releases:"
+    $allReleases | Group-Object -Property type | ForEach-Object {
+        Write-Host "  - $($_.Name): $($_.Count) releases"
+    }
+    
+    # Show unique Role values
+    Write-Host ""
+    Write-Host "Unique 'role' values found in releases:"
+    $allReleases | Group-Object -Property role | ForEach-Object {
+        Write-Host "  - $($_.Name): $($_.Count) releases"
+    }
+    
+    # Show sample titles (first 20)
+    Write-Host ""
+    Write-Host "Sample of release titles (first 20):"
+    $allReleases | Select-Object -First 20 | ForEach-Object {
+        Write-Host "  - ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+    }
+    
+    # Show releases that match Type and Role but not the title pattern
+    Write-Host ""
+    Write-Host "Releases matching Type=$whereType and Role=$whereRole (but may not match title pattern):"
+    $typeRoleMatches = $allReleases | Where-Object {
+        $_.type -eq $whereType -and $_.role -eq $whereRole
+    }
+    Write-Host "  Found $($typeRoleMatches.Count) releases matching Type and Role"
+    if ($typeRoleMatches.Count -gt 0) {
+        Write-Host "  Sample titles:"
+        $typeRoleMatches | Select-Object -First 10 | ForEach-Object {
+            Write-Host "    - ""$($_.title)"""
+        }
+    }
+    
+    # Test the regex pattern against sample titles
+    Write-Host ""
+    Write-Host "Testing regex pattern: '$whereMatch'"
+    Write-Host "Sample matches:"
+    $regexMatches = $allReleases | Where-Object { $_.title -match $whereMatch } | Select-Object -First 10
+    if ($regexMatches.Count -gt 0) {
+        $regexMatches | ForEach-Object {
+            Write-Host "  ✓ ""$($_.title)"" (Type: $($_.type), Role: $($_.role))"
+        }
+    } else {
+        Write-Host "  ⚠ No titles match the regex pattern"
+    }
+    
+    Write-Host ""
+    Write-Host "================================================"
+    Write-Host ""
+}
 
 # Log results of Step 1
 Write-Host "✓ Fetched $($allReleases.Count) total releases from label $labelId" -ForegroundColor Green
