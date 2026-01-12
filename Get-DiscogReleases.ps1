@@ -53,8 +53,18 @@ $Headers = @{
     "Authorization" = "Discogs token=$DiscogsToken"
 }
 
+#==============================================================================
+# MAIN PROGRAM FLOW
+#==============================================================================
+
+# Step 1: Fetch all releases from the specified Discogs label
 $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
 
+# Step 2: Filter releases based on configured criteria and sort by issue number
+# - Filter by type (e.g., "master" releases only)
+# - Filter by role (e.g., "Main" releases only)
+# - Filter by title pattern using regex (e.g., match numbered series)
+# - Sort by the numeric value extracted from the title
 $numberedMasters = $allReleases |
     Where-Object {
         $_.type -eq $whereType -and
@@ -63,47 +73,49 @@ $numberedMasters = $allReleases |
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
-# Work through the releases returned by the API
-
+# Step 3: Process each master release to extract detailed track information
 $rows = @()
 
 foreach ($master in $numberedMasters) {
-
+    # Extract issue number from the title (e.g., "Now 50" -> 50)
     $issueNumber = [int]([regex]::Match($master.title, '\d+').Value)
 
-    # Get versions for this master
+    # Step 3a: Get all versions (different pressings/editions) of this master release
     $versionsUrl = "$BaseUrl/masters/$($master.id)/versions?per_page=100"
     $versions    = Invoke-RestMethod -Uri $versionsUrl -Headers $Headers -Method Get
 
     foreach ($v in $versions.versions) {
-        # Get the concrete release
+        # Step 3b: Get detailed release information for each version
         $releaseUrl  = "$BaseUrl/releases/$($v.id)"
         $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
 
         $year = $releaseData.year
-
-        # Use first format entry
+        
+        # Extract format information (CD, Vinyl, Cassette, etc.)
         $firstFormat = $releaseData.formats | Select-Object -First 1
         $formatName  = $firstFormat.name
         $descriptions = @()
         if ($firstFormat.descriptions) { $descriptions = $firstFormat.descriptions }
 
+        # Generate a descriptive version label (e.g., "CD-Remaster", "Vinyl-Original")
         $versionLabel = Get-VersionLabel -FormatName $formatName -Descriptions $descriptions
 
+        # Step 3c: Process each track in this release
         foreach ($t in $releaseData.tracklist) {
-            if (-not $t.title) { continue }
+            if (-not $t.title) { continue }  # Skip tracks without titles
 
+            # Parse the track position into disc and track number
             $parsed = Parse-DiscAndTrack -Position $t.position
-
             $disc  = $parsed.Disc
             $track = $parsed.TrackNumber
 
-            # track artist: sometimes null; sometimes in extraartists; often in 'artists' for VA
+            # Extract artist name (may be in 'artists' field for various artists compilations)
             $artistName = $null
             if ($t.artists -and $t.artists.Count -gt 0) {
                 $artistName = ($t.artists | Select-Object -First 1).name
             }
 
+            # Add this track's information to our results
             $rows += [pscustomobject]@{
                 Issue            = $issueNumber
                 Year             = $year
@@ -119,11 +131,35 @@ foreach ($master in $numberedMasters) {
     }
 }
 
-# Export CSV File
+# Step 4: Export all collected track data to CSV file
+# Sort by Issue, Format, Version, Disc, and Track Number for organized output
 $rows | Sort-Object Issue, Format, Version, Disc, TrackNumber |
     Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\$fileName.csv"
 
 <#
+.SYNOPSIS
+    Retrieves all releases from a Discogs label with pagination support.
+
+.DESCRIPTION
+    Fetches all releases for a specified label ID from the Discogs API.
+    Automatically handles pagination to retrieve all results across multiple pages.
+    Uses the global $BaseUrl and $Headers variables for API requests.
+
+.PARAMETER LabelId
+    The Discogs label ID to query. This is a numeric identifier.
+
+.PARAMETER PerPage
+    Number of results to fetch per page. Default is 100 (maximum allowed by API).
+
+.OUTPUTS
+    Array of release objects containing information about each release from the label.
+
+.EXAMPLE
+    $releases = Get-DiscogsLabelReleases -LabelId 563691
+    Retrieves all releases from label ID 563691.
+
+.NOTES
+    Requires $BaseUrl and $Headers to be set globally before calling this function.
 #>
 function Get-DiscogsLabelReleases {
     param(
@@ -144,6 +180,29 @@ function Get-DiscogsLabelReleases {
 }
 
 <#
+.SYNOPSIS
+    Determines a version label based on format and release descriptions.
+
+.DESCRIPTION
+    Creates a descriptive label for a release version by combining the format name
+    with characteristics from the release descriptions (e.g., Remastered, Reissue).
+    Used to distinguish between different versions of the same release.
+
+.PARAMETER FormatName
+    The format of the release (e.g., "CD", "Vinyl", "Cassette").
+
+.PARAMETER Descriptions
+    Array of description strings from the release metadata (e.g., "Remastered", "Reissue", "Club Edition").
+
+.OUTPUTS
+    String in format "{FormatName}-{Suffix}" (e.g., "CD-Remaster", "Vinyl-Original").
+
+.EXAMPLE
+    $label = Get-VersionLabel -FormatName "CD" -Descriptions @("Remastered", "Compilation")
+    Returns "CD-Remaster"
+
+.NOTES
+    Priority order: Remastered > Reissue > Repress > Club Edition > Promo > Original (default).
 #>
 function Get-VersionLabel {
     param(
@@ -163,6 +222,32 @@ function Get-VersionLabel {
 }
 
 <#
+.SYNOPSIS
+    Parses track position strings into disc and track numbers.
+
+.DESCRIPTION
+    Converts various track position formats from Discogs (vinyl and CD formats)
+    into standardized disc and track number values. Handles both letter-based
+    vinyl positions (A1, B2) and numeric CD positions (1-01, 2-07).
+
+.PARAMETER Position
+    The position string from Discogs tracklist (e.g., "A1", "B12", "1-05", "2-10").
+
+.OUTPUTS
+    PSCustomObject with properties:
+    - Disc: Disc identifier (letter for vinyl, number for CD)
+    - TrackNumber: Track number as integer
+
+.EXAMPLE
+    $parsed = Parse-DiscAndTrack -Position "A5"
+    Returns object with Disc="A", TrackNumber=5
+
+.EXAMPLE
+    $parsed = Parse-DiscAndTrack -Position "2-07"
+    Returns object with Disc="2", TrackNumber=7
+
+.NOTES
+    Fallback for unrecognized formats: Disc=1, TrackNumber=0
 #>
 function Parse-DiscAndTrack {
     param(
