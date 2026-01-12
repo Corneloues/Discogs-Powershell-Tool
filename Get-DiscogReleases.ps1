@@ -110,10 +110,6 @@ if ($script:enableDiagnostics) {
     # Show releases that match the title pattern
     Write-Host ""
     Write-Host "Releases matching title pattern '$whereMatch' (type/role filters not available in this API endpoint):"
-#     $typeRoleMatches = $allReleases | Where-Object {
-# #        $_.type -eq $whereType -and $_.role -eq $whereRole
-#         $_.type -match $whereType -or $_.role -match $whereRole
-#     }
     $typeRoleMatches = $allReleases
     
     Write-Host "  Found $($typeRoleMatches.Count) total releases"
@@ -189,7 +185,10 @@ $filteredReleases = $allReleases |
     Where-Object {
         $_.title -match $whereMatch
     } |
-    Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
+    Sort-Object { 
+        $match = [regex]::Match($_.title, '\d+')
+        if ($match.Success) { [int]$match.Value } else { 0 }
+    }
 
 # Log results of Step 2
 Write-Host "✓ Filtered to $($filteredReleases.Count) releases matching title pattern" -ForegroundColor Green
@@ -221,22 +220,17 @@ foreach ($release in $filteredReleases) {
         $releaseUrl  = "$BaseUrl/releases/$($release.id)"
         $releaseData = Invoke-RestMethod -Uri $releaseUrl -Headers $Headers -Method Get
         
-        $formatDisplay = if ($releaseData.formats -and $releaseData.formats.Count -gt 0) {
-            $releaseData.formats[0].name
-        } else {
-            "Unknown"
-        }
-        Write-Host "  Year: $($releaseData.year), Format: $formatDisplay" -ForegroundColor Gray
-        Write-Host "  Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
-        
-        $year = $releaseData.year
-        
-        # Extract format information
+        # Extract format information once
         $formatName = if ($releaseData.formats -and $releaseData.formats.Count -gt 0) {
             $releaseData.formats[0].name
         } else {
             "Unknown"
         }
+        
+        Write-Host "  Year: $($releaseData.year), Format: $formatName" -ForegroundColor Gray
+        Write-Host "  Tracks: $($releaseData.tracklist.Count)" -ForegroundColor Gray
+        
+        $year = $releaseData.year
         
         # Get version label (keep existing logic)
         $formatDescs = if ($releaseData.formats -and $releaseData.formats[0].descriptions) {
