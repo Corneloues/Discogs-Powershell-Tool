@@ -46,8 +46,7 @@ jobs:
           WHERE_ROLE: ${{ vars.NOW_UK_WHERE_ROLE }}
           WHERE_MATCH: ${{ vars.NOW_UK_WHERE_MATCH }}
           FILE_NAME: ${{ inputs.file_name || vars.NOW_UK_FILE_NAME }}
-          # Hardcoded user agent:
-          USER_AGENT: SoundchaserUKDiscogsScript/1.0
+          USER_AGENT: ${{ vars.USER_AGENT }}
         run: |
           # Execute the PowerShell script
           ./Get-DiscogReleases.ps1
