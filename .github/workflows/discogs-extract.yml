@@ -2,13 +2,17 @@
 name: Extract Discogs Releases
 
 # Workflow triggers:
-# - Manual execution via Actions tab (workflow_dispatch)
+# - Manual execution via Actions tab (workflow_dispatch) with optional overrides
 # - Scheduled execution every Sunday at midnight UTC
 "on":
   workflow_dispatch:
     inputs:
       label_id:
         description: 'Override label ID (optional)'
+        required: false
+        type: string
+      file_name:
+        description: 'Override output filename without .csv extension (optional)'
         required: false
         type: string
   schedule:
@@ -33,10 +37,17 @@ jobs:
         shell: pwsh
         env:
           # Set environment variables from GitHub Secrets and Variables
+          # Secret (sensitive data):
           DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          # Variables (non-sensitive configuration):
           BASE_URL: ${{ vars.BASE_URL }}
           LABEL_ID: ${{ inputs.label_id || vars.NOW_UK_SERIES }}
-          USER_AGENT: ${{ vars.USER_AGENT }}
+          WHERE_TYPE: ${{ vars.NOW_UK_WHERE_TYPE }}
+          WHERE_ROLE: ${{ vars.NOW_UK_WHERE_ROLE }}
+          WHERE_MATCH: ${{ vars.NOW_UK_WHERE_MATCH }}
+          FILE_NAME: ${{ inputs.file_name || vars.NOW_UK_FILE_NAME }}
+          # Hardcoded user agent:
+          USER_AGENT: SoundchaserUKDiscogsScript/1.0
         run: |
           # Execute the PowerShell script
           ./Get-DiscogReleases.ps1

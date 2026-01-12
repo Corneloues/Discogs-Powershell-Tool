@@ -11,6 +11,10 @@
     BASE_URL      - Discogs API base URL (required)
     USER_AGENT    - User agent string for API requests (required)
     LABEL_ID      - Discogs label ID to query (required)
+    WHERE_TYPE    - Filter type for releases (e.g., "master") (required)
+    WHERE_ROLE    - Filter role for releases (e.g., "Main") (required)
+    WHERE_MATCH   - Regex pattern to match titles (required)
+    FILE_NAME     - Output CSV filename without extension (required)
 
 .NOTES
     This script is designed to run in GitHub Actions with secrets and variables.
@@ -21,12 +25,20 @@ $DiscogsToken = $env:DISCOGS_TOKEN
 $BaseUrl      = $env:BASE_URL
 $UserAgent    = $env:USER_AGENT
 $labelIdStr   = $env:LABEL_ID
+$whereType    = $env:WHERE_TYPE
+$whereRole    = $env:WHERE_ROLE
+$whereMatch   = $env:WHERE_MATCH
+$fileName     = $env:FILE_NAME
 
 # Validate required environment variables
 if (-not $DiscogsToken) { throw "DISCOGS_TOKEN environment variable is required" }
 if (-not $BaseUrl) { throw "BASE_URL environment variable is required" }
 if (-not $UserAgent) { throw "USER_AGENT environment variable is required" }
 if (-not $labelIdStr) { throw "LABEL_ID environment variable is required" }
+if (-not $whereType) { throw "WHERE_TYPE environment variable is required" }
+if (-not $whereRole) { throw "WHERE_ROLE environment variable is required" }
+if (-not $whereMatch) { throw "WHERE_MATCH environment variable is required" }
+if (-not $fileName) { throw "FILE_NAME environment variable is required" }
 
 # Parse and validate label ID
 try {
@@ -45,9 +57,9 @@ $allReleases = Get-DiscogsLabelReleases -LabelId $labelId
 
 $numberedMasters = $allReleases |
     Where-Object {
-        $_.type -eq "master" -and
-        $_.role -eq "Main" -and
-        $_.title -match "Now That's What I Call Music\s*\d+"
+        $_.type -eq $whereType -and
+        $_.role -eq $whereRole -and
+        $_.title -match $whereMatch
     } |
     Sort-Object { [int]([regex]::Match($_.title, '\d+').Value) }
 
@@ -109,7 +121,7 @@ foreach ($master in $numberedMasters) {
 
 # Export CSV File
 $rows | Sort-Object Issue, Format, Version, Disc, TrackNumber |
-    Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\Now_UK_1to122_AllVersions_Tracks.csv"
+    Export-Csv -NoTypeInformation -Encoding UTF8 -Path ".\$fileName.csv"
 
 <#
 #>
