@@ -1,0 +1,175 @@
+name: Extract Discogs Release Information
+
+# This workflow automates the extraction of Discogs release information
+# using the Get-DiscogReleases.ps1 PowerShell script
+
+# Trigger Configuration
+on:
+  # Manual trigger: Run workflow on-demand from Actions tab with customizable inputs
+  workflow_dispatch:
+    inputs:
+      label_id:
+        description: 'Discogs Label ID to extract releases from'
+        required: false
+        default: '563691'
+        type: string
+      per_page:
+        description: 'Number of results per page (max 100)'
+        required: false
+        default: '100'
+        type: string
+      commit_message:
+        description: 'Custom commit message for CSV output'
+        required: false
+        default: ''
+        type: string
+
+  # Scheduled trigger: Run automatically every Sunday at midnight UTC
+  schedule:
+    - cron: '0 0 * * 0'  # Every Sunday at 00:00 UTC
+
+  # Optional: Trigger on push to main branch
+  # Uncomment the lines below to enable this trigger
+  # push:
+  #   branches:
+  #     - main
+
+# Permissions: Allow workflow to push changes back to repository
+permissions:
+  contents: write
+
+# Workflow jobs
+jobs:
+  extract-discogs-data:
+    name: Extract and Commit Discogs Data
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history to ensure proper git operations
+          fetch-depth: 0
+
+      # Step 2: Setup PowerShell environment
+      # PowerShell Core (pwsh) is pre-installed on ubuntu-latest runners
+      - name: Verify PowerShell installation
+        run: pwsh --version
+
+      # Step 3: Configure Discogs API credentials and run extraction script
+      - name: Extract Discogs release information
+        env:
+          # Pass DISCOGS_TOKEN from GitHub Secrets
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          # Use workflow inputs or defaults
+          LABEL_ID: ${{ github.event.inputs.label_id || '563691' }}
+          PER_PAGE: ${{ github.event.inputs.per_page || '100' }}
+        run: |
+          # Set up Discogs API configuration inline
+          # This follows the pattern from Config.example.ps1
+
+          # Read the main script content
+          $scriptContent = Get-Content -Path ./Get-DiscogReleases.ps1 -Raw
+
+          # Replace the hardcoded token with environment variable
+          # The script has: $DiscogsToken = "..."
+          # We replace it with our secret token
+          $scriptContent = $scriptContent -replace `
+            '^\$DiscogsToken\s*=\s*"[^"]*"', `
+            "`$DiscogsToken = `"`$env:DISCOGS_TOKEN`""
+
+          # Replace labelId if provided via workflow input
+          if ($env:LABEL_ID) {
+            $scriptContent = $scriptContent -replace `
+              '^\$labelId\s*=\s*\d+', `
+              "`$labelId = $env:LABEL_ID"
+          }
+
+          # Write modified script to temporary file
+          $scriptContent | Out-File -FilePath ./run-extraction.ps1 -Encoding UTF8
+
+          # Execute the extraction script
+          pwsh -File ./run-extraction.ps1
+
+          # Clean up temporary script
+          Remove-Item ./run-extraction.ps1 -ErrorAction SilentlyContinue
+        shell: pwsh
+
+      # Step 4: Upload CSV files as artifacts for easy download
+      - name: Upload CSV artifacts
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if previous steps had warnings
+        with:
+          name: discogs-csv-files-${{ github.run_number }}
+          path: '*.csv'
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Step 5: Configure Git for commits
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Step 6: Commit and push CSV files back to repository
+      - name: Commit CSV output files
+        id: commit
+        run: |
+          # Add all CSV files
+          git add *.csv
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit - CSV files are unchanged"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            # Determine commit message
+            if [ -n "${{ github.event.inputs.commit_message }}" ]; then
+              COMMIT_MSG="${{ github.event.inputs.commit_message }}"
+            else
+              COMMIT_MSG="Update Discogs release data - $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            fi
+
+            # Commit changes
+            git commit -m "$COMMIT_MSG"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Committed changes with message: $COMMIT_MSG"
+          fi
+
+      # Step 7: Push changes to repository
+      - name: Push changes
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          # Push to the current branch
+          git push
+          echo "Successfully pushed CSV files to repository"
+
+      # Step 8: Summary
+      - name: Workflow summary
+        if: always()
+        run: |
+          echo "## Discogs Data Extraction Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # List generated CSV files
+          if ls *.csv 1> /dev/null 2>&1; then
+            echo "**Generated CSV Files:**" >> $GITHUB_STEP_SUMMARY
+            for file in *.csv; do
+              size=$(du -h "$file" | cut -f1)
+              echo "- \`$file\` ($size)" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "⚠️ No CSV files were generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.commit.outputs.has_changes }}" == "true" ]; then
+            echo "✅ Changes committed and pushed to repository" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ No changes detected - data unchanged" >> $GITHUB_STEP_SUMMARY
+          fi
